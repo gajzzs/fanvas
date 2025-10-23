@@ -1,608 +1,509 @@
 #!/usr/bin/env bash
 
-## Author  : Aditya Shakya (adi1090x)
-## Mail    : adi1090x@gmail.com
-## Github  : @adi1090x
-## Twitter : @adi1090x
+## Canvas - An ImageMagick Script To Generate Wallpapers (Fedora Edition)
+## Original Author: Aditya Shakya (adi1090x)
+## Refactored for Fedora
 
-## Canvas - An Imagemagick Script To Generate Wallpapers.
+set -euo pipefail
 
-## ANSI Colors (FG & BG)
-RED="$(printf '\033[31m')"        GREEN="$(printf '\033[32m')"
-ORANGE="$(printf '\033[33m')"     BLUE="$(printf '\033[34m')"
-MAGENTA="$(printf '\033[35m')"    CYAN="$(printf '\033[36m')"
-WHITE="$(printf '\033[37m')"      BLACK="$(printf '\033[30m')"
-REDBG="$(printf '\033[41m')"      GREENBG="$(printf '\033[42m')"
-ORANGEBG="$(printf '\033[43m')"   BLUEBG="$(printf '\033[44m')"
-MAGENTABG="$(printf '\033[45m')"  CYANBG="$(printf '\033[46m')"
-WHITEBG="$(printf '\033[47m')"    BLACKBG="$(printf '\033[40m')"
+## ANSI Colors
+declare -A COLORS=(
+    [RED]=$'\033[31m'
+    [GREEN]=$'\033[32m'
+    [ORANGE]=$'\033[33m'
+    [BLUE]=$'\033[34m'
+    [MAGENTA]=$'\033[35m'
+    [CYAN]=$'\033[36m'
+    [WHITE]=$'\033[37m'
+    [RESET]=$'\033[0m'
+)
 
-## Dir, Size, Name, Etc
-DIR="`xdg-user-dir PICTURES`/Canvas"
-size="1366x768"
-psize="500x281"
-name="Canvas_$(date +%Y-%m-%d_%I-%M-%S).png"
+## Configuration
+readonly DIR="${XDG_PICTURES_DIR:-$HOME/Pictures}/Canvas"
+readonly DEFAULT_SIZE="1920x1080"
+readonly PREVIEW_SIZE="600x338"
 
-## Wordsplit in ZSH
-set -o shwordsplit 2>/dev/null
+## Global variables
+SIZE="$DEFAULT_SIZE"
+NAME="Canvas_$(date +%Y-%m-%d_%H-%M-%S).png"
+SOLID=false
+GRADIENT=false
+RGRADIENT=false
+TGRADIENT=false
+BGRADIENT=false
+PLASMA=false
+NOISE=false
+AUTOBG=false
+RANDOMIZE=false
+NOFEH=false
+COLOR_ARG=""
 
-## Script Termination
-exit_on_signal_SIGINT() {
-    { printf "${RED}\n\n%s\n" "[!] Program Interrupted." 2>&1; echo; reset_color; }
-    exit 0
-}
+## Signal handlers
+trap 'echo -e "\n${COLORS[RED]}[!] Program interrupted.${COLORS[RESET]}"; exit 130' SIGINT
+trap 'echo -e "\n${COLORS[RED]}[!] Program terminated.${COLORS[RESET]}"; exit 143' SIGTERM
 
-exit_on_signal_SIGTERM() {
-    { printf "${RED}\n\n%s\n" "[!] Program Terminated." 2>&1; echo; reset_color; }
-    exit 0
-}
-
-trap exit_on_signal_SIGINT SIGINT
-trap exit_on_signal_SIGTERM SIGTERM
-
-## Reset terminal colors
-reset_color() {
-	tput sgr0   # reset attributes
-	tput op     # reset color
-    return
-}
-
-## Prerequisite
-Prerequisite() {
-    dependencies=(convert feh xcolor)
-    for dependency in "${dependencies[@]}"; do
-        type -p "$dependency" &>/dev/null || {
-            echo -e ${RED}"ERROR: Could not find ${GREEN}'${dependency}'${RED}, is it installed?" >&2
-            { reset_color; exit 1; }
-        }
+## Check dependencies
+check_prerequisites() {
+    local deps=(convert feh)
+    local missing=()
+    
+    for dep in "${deps[@]}"; do
+        if ! command -v "$dep" &>/dev/null; then
+            missing+=("$dep")
+        fi
     done
-
-	if [[ ! -d "$DIR" ]]; then
-		mkdir -p "$DIR"   
-	fi
+    
+    if [[ ${#missing[@]} -gt 0 ]]; then
+        echo -e "${COLORS[RED]}ERROR: Missing dependencies: ${missing[*]}${COLORS[RESET]}" >&2
+        echo -e "${COLORS[ORANGE]}Install with: sudo dnf install ImageMagick feh${COLORS[RESET]}" >&2
+        exit 1
+    fi
+    
+    # Check for color picker (optional)
+    if ! command -v gcolor3 &>/dev/null && ! command -v gpick &>/dev/null && ! command -v zenity &>/dev/null; then
+        echo -e "${COLORS[ORANGE]}Warning: No color picker found. Install gcolor3, gpick, or zenity for interactive color selection.${COLORS[RESET]}" >&2
+        echo -e "${COLORS[ORANGE]}Install with: sudo dnf install gcolor3${COLORS[RESET]}" >&2
+    fi
+    
+    mkdir -p "$DIR"
 }
 
-## Usage
+## Usage information
 usage() {
-	clear
-    cat <<- EOF
-		${RED}┏━╸${GREEN}┏━┓${ORANGE}┏┓╻${BLUE}╻ ╻${MAGENTA}┏━┓${CYAN}┏━┓${WHITE}
-		${RED}┃  ${GREEN}┣━┫${ORANGE}┃┗┫${BLUE}┃┏┛${MAGENTA}┣━┫${CYAN}┗━┓${WHITE}
-		${RED}┗━╸${GREEN}╹ ╹${ORANGE}╹ ╹${BLUE}┗┛ ${MAGENTA}╹ ╹${CYAN}┗━┛${WHITE}
-		Canvas V3.0  : The Wallpaper Generator.
-		Developed By : Aditya Shakya (@adi1090x)
-			
-		Usage : canvas [-h] [-S wxh] [-B] [-s] [-l] [-r] [-t] [-b] [-p] [-n] [-a] [-R]
-
-		Options:
-		   -h   --help		Show this help message & exit
-		   -S   --size		Size of the wallpaper (default is 1366x768)
-		   -B   --blurred	Generate a random blurred wallpaper
-		   -s   --solid		Generate a solid color wallpaper
-		   -l   --linear	Generate a linear gradient wallpaper
-		   -r   --radial	Generate a radial gradient wallpaper
-		   -t   --twisted	Generate a twisted gradient wallpaper
-		   -b   --bilinear	Generate a bilinear(4point) gradient wallpaper
-		   -p   --plasma	Generate a plasma wallpaper
-		   -n   --no-preview	Do not show preview when image is generated 
-		   -a   --autobg	Automatically set as wallpaper (implies -n)
-		   -R   --randomize	Generate a random wallpaper
-		   
+    cat <<-EOF
+	${COLORS[RED]}┏━╸${COLORS[GREEN]}┏━┓${COLORS[ORANGE]}┏┓╻${COLORS[BLUE]}╻ ╻${COLORS[MAGENTA]}┏━┓${COLORS[CYAN]}┏━┓${COLORS[RESET]}
+	${COLORS[RED]}┃  ${COLORS[GREEN]}┣━┫${COLORS[ORANGE]}┃┗┫${COLORS[BLUE]}┃┏┛${COLORS[MAGENTA]}┣━┫${COLORS[CYAN]}┗━┓${COLORS[RESET]}
+	${COLORS[RED]}┗━╸${COLORS[GREEN]}╹ ╹${COLORS[ORANGE]}╹ ╹${COLORS[BLUE]}┗┛ ${COLORS[MAGENTA]}╹ ╹${COLORS[CYAN]}┗━┛${COLORS[RESET]}
+	
+	Canvas V4.0 (Fedora Edition) - Wallpaper Generator
+	
+	Usage: canvas [OPTIONS]
+	
+	Options:
+	  -h, --help          Show this help message
+	  -S, --size WxH      Wallpaper size (default: 1920x1080)
+	  -s, --solid         Generate solid color wallpaper
+	  -l, --linear        Generate linear gradient wallpaper
+	  -r, --radial        Generate radial gradient wallpaper
+	  -t, --twisted       Generate twisted gradient wallpaper
+	  -b, --bilinear      Generate bilinear (4-point) gradient wallpaper
+	  -p, --plasma        Generate plasma wallpaper
+	  -B, --blurred       Generate random blurred wallpaper
+	  -n, --no-preview    Skip preview window
+	  -a, --autobg        Auto-set as wallpaper (implies -n)
+	  -R, --randomize     Generate random wallpaper
+	  -c, --colors COLORS Specify colors directly (see examples)
+	
+	Examples:
+	  canvas -s -c "#FF5733"                    # Solid color
+	  canvas -l -c "#FF5733-#3498DB" -a         # Linear gradient, auto-set
+	  canvas -r -c "red-blue"                   # Radial with color names
+	  canvas -t -c "#E74C3C-#8E44AD"            # Twisted gradient
+	  canvas -b -c "#FF0000,#00FF00,#0000FF,#FFFF00"  # 4 colors for bilinear
+	  canvas -p -c "#FF6B6B-#4ECDC4"            # Plasma with colors
+	  canvas -R                                 # Random wallpaper
+	  canvas -S 2560x1440 -l -c "orange-purple" # Custom size
+	
 	EOF
 }
 
-## Set wallpaper in kde
-set_kde() {
-	qdbus org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.evaluateScript "
-		var allDesktops = desktops();
-		print (allDesktops);
-		for (i=0;i<allDesktops.length;i++) {
-			d = allDesktops[i];
-			d.wallpaperPlugin = 'org.kde.image';
-			d.currentConfigGroup = Array('Wallpaper',
-										'org.kde.image',
-										'General');
-			d.writeConfig('Image', 'file://"$1"')
-		}"
+## Detect desktop environment and set wallpaper
+set_wallpaper() {
+    local file="$DIR/$NAME"
+    
+    case "${XDG_CURRENT_DESKTOP:-unknown}" in
+        *GNOME*|*gnome*|*ubuntu*)
+            gsettings set org.gnome.desktop.background picture-uri "file://$file"
+            gsettings set org.gnome.desktop.background picture-uri-dark "file://$file"
+            ;;
+        *KDE*|*kde*|*plasma*)
+            qdbus org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.evaluateScript "
+                var allDesktops = desktops();
+                for (i=0; i<allDesktops.length; i++) {
+                    d = allDesktops[i];
+                    d.wallpaperPlugin = 'org.kde.image';
+                    d.currentConfigGroup = Array('Wallpaper', 'org.kde.image', 'General');
+                    d.writeConfig('Image', 'file://$file')
+                }"
+            ;;
+        *XFCE*|*xfce*)
+            xfconf-query --channel xfce4-desktop \
+                --property /backdrop/screen0/monitoreDP1/workspace0/last-image \
+                --set "$file" 2>/dev/null || \
+            xfconf-query --channel xfce4-desktop \
+                --property /backdrop/screen0/monitor0/workspace0/last-image \
+                --set "$file"
+            ;;
+        *Cinnamon*|*cinnamon*)
+            gsettings set org.cinnamon.desktop.background picture-uri "file://$file"
+            ;;
+        *MATE*|*mate*)
+            gsettings set org.mate.background picture-filename "$file"
+            ;;
+        *)
+            if [[ "$XDG_SESSION_TYPE" == "wayland" ]]; then
+                if command -v swaymsg &>/dev/null; then
+                    swaymsg output '*' bg "$file" fill
+                else
+                    echo -e "${COLORS[ORANGE]}Wayland detected but no supported compositor found${COLORS[RESET]}"
+                    return 1
+                fi
+            else
+                feh --bg-fill "$file"
+            fi
+            ;;
+    esac
+    
+    echo -e "${COLORS[GREEN]}✓ Wallpaper set successfully${COLORS[RESET]}"
 }
 
-## Set wallpaper in cinnamon
-set_cinnamon() {
-	 gsettings set org.cinnamon.desktop.background picture-uri "file:///$1"
+## Show preview
+show_preview() {
+    if [[ "$NOFEH" != true ]] && [[ "$AUTOBG" != true ]]; then
+        feh --borderless --scale-down --geometry="$PREVIEW_SIZE" \
+            --title="Canvas Preview: $NAME" "$DIR/$NAME" &>/dev/null &
+    fi
 }
 
-## Set wallpaper in GNOME
-set_gnome() {
-	gsettings set org.gnome.desktop.background picture-uri "file:///$1"
-	gsettings set org.gnome.desktop.screensaver picture-uri "file:///$1"
+## Prompt to set wallpaper
+prompt_set_wallpaper() {
+    if [[ "$AUTOBG" == true ]]; then
+        set_wallpaper
+        return
+    fi
+    
+    echo
+    read -rp "${COLORS[ORANGE]}Set as desktop background? (y/n): ${COLORS[BLUE]}" reply
+    echo -e "${COLORS[RESET]}"
+    
+    if [[ $reply =~ ^[Yy]$ ]]; then
+        set_wallpaper
+    fi
 }
 
-## Choose wallpaper setter
-case "$OSTYPE" in
-	linux*)
-			if [[ "$XDG_SESSION_TYPE" == 'x11' ]]; then
-				if [[ "$DESKTOP_SESSION" =~ ^(MATE|Mate|mate)$ ]]; then
-					SETTER="gsettings set org.mate.background picture-filename"
-				elif [[ "$DESKTOP_SESSION" =~ ^(Xfce Session|xfce session|XFCE|xfce|Xubuntu|xubuntu)$ ]]; then
-					SCREEN="$(xrandr --listactivemonitors | awk -F ' ' 'END {print $1}' | tr -d \:)"
-					MONITOR="$(xrandr --listactivemonitors | awk -F ' ' 'END {print $2}' | tr -d \*+)"
-					SETTER="xfconf-query --channel xfce4-desktop --property /backdrop/screen$SCREEN/monitor$MONITOR/workspace0/last-image --set"
-				elif [[ "$DESKTOP_SESSION" =~ ^(LXDE|Lxde|lxde)$ ]]; then
-					SETTER="pcmanfm --set-wallpaper"
-				elif [[ "$DESKTOP_SESSION" =~ ^(cinnamon|Cinnamon)$ ]]; then
-					SETTER=set_cinnamon
-				elif [[ "$DESKTOP_SESSION" =~ ^(/usr/share/xsessions/plasma|/usr/share/xsessions/plasmax11|NEON|Neon|neon|PLASMA|Plasma|plasma|KDE|Kde|kde)$ ]]; then
-					SETTER=set_kde
-				elif [[ "$DESKTOP_SESSION" =~ ^(PANTHEON|Pantheon|pantheon|GNOME|Gnome|gnome|Gnome-xorg|gnome-xorg|gnome-classic|UBUNTU|Ubuntu|ubuntu|DEEPIN|Deepin|deepin|POP|Pop|pop|ZORIN|Zorin|zorin|budgie-desktop)$ ]]; then
-					SETTER=set_gnome
-				else 
-					SETTER="feh --bg-fill"
-				fi
-			elif [[ "$XDG_SESSION_TYPE" == 'wayland' ]]; then
-				SETTER="eval ogurictl output '*' --image"
-			fi
-			;;
-esac
-
-## Display Info
-display_info() {
-	if [[ "$XDG_SESSION_TYPE" == 'x11' ]]; then
-		echo -e ${ORANGE}"[*] Setting wallpaper in ${GREEN}$XDG_SESSION_TYPE ($DESKTOP_SESSION)${ORANGE} session, using : ${MAGENTA}$SETTER"
-	elif [[ "$XDG_SESSION_TYPE" == 'wayland' ]]; then
-		if [[ ! `pidof oguri` ]]; then
-			echo -e ${RED}"[*] 'oguri' daemon is not running. You must start the daemon first.\n[!] Kill 'swaybg' in sway session if the wallpaper is not getting applied."
-			exit 1
-		else
-			echo -e ${ORANGE}"[*] Setting wallpaper in ${GREEN}$XDG_SESSION_TYPE ($XDG_SESSION_DESKTOP)${ORANGE} session, using : ${MAGENTA}$SETTER"
-		fi
-	fi
+## Get color using available picker
+pick_color() {
+    # Try gcolor3 first (most common in Fedora)
+    if command -v gcolor3 &>/dev/null; then
+        gcolor3 2>/dev/null &
+        local pid=$!
+        wait $pid 2>/dev/null
+        # gcolor3 copies to clipboard, try to get it
+        if command -v xclip &>/dev/null; then
+            xclip -selection clipboard -o 2>/dev/null || echo "#$(printf '%06X' $((RANDOM * RANDOM % 16777216)))"
+        else
+            echo "#$(printf '%06X' $((RANDOM * RANDOM % 16777216)))"
+        fi
+    # Try gpick
+    elif command -v gpick &>/dev/null; then
+        gpick -pso --single 2>/dev/null | grep -oP '#[0-9A-Fa-f]{6}' || echo "#$(printf '%06X' $((RANDOM * RANDOM % 16777216)))"
+    # Fallback to zenity color selection
+    elif command -v zenity &>/dev/null; then
+        zenity --color-selection --show-palette 2>/dev/null | awk -F'[()]' '{print $2}' | {
+            read rgb
+            if [[ -n "$rgb" ]]; then
+                # Convert rgb(r,g,b) to hex
+                echo "$rgb" | awk -F'[,()]' '{printf "#%02X%02X%02X\n", $1, $2, $3}'
+            else
+                echo "#$(printf '%06X' $((RANDOM * RANDOM % 16777216)))"
+            fi
+        }
+    else
+        echo -e "${COLORS[RED]}No color picker available. Please install: sudo dnf install gcolor3${COLORS[RESET]}" >&2
+        return 1
+    fi
 }
 
-## Wallpaper Setter
-set_bg() {
-	if [[ "$AUTOBG" != "true" ]]; then
-		{ echo; read -p ${ORANGE}"Set as desktop background? (y/n): "${BLUE}; }
-	fi
-	if [[ "$AUTOBG" == "true" ]] || [[ $REPLY == "y" ]] || [[ $REPLY == "Y" ]]; then
-		$SETTER "$DIR/$name"
-		{ echo; reset_color; exit 0; }
-	else
-		{ echo; reset_color; exit 0; }
-	fi
-}
-
-## Show preview of generated image unless paramaters supplied tells it not
-show_feh() {
-	if [[ "$NOFEH" != "true" ]] && [[ "$AUTOBG" != "true" ]]; then
-		feh --borderless --scale-down --geometry="$psize" --title="$name" "$DIR/$name" &>/dev/null &
-	fi
-}
-
-## Pick the colors
-color_picker() {
-	picker_app="xcolor --format hex --preview-size 255 --scale 10"
-	if [[ "$SOLID" == "true" ]]; then
-		{ echo; echo -n ${ORANGE}"Pick a color... "; }
-		color=$($picker_app)
-		{ echo; echo ${ORANGE}"Generating wallpaper with color:${GREEN} $color"; }
-	elif [[ "$GRADIENT" == "true" ]] || [[ "$RGRADIENT" == "true" ]] || [[ "$TGRADIENT" == "true" ]]; then
-		{ echo; echo -n ${ORANGE}"Pick first color... "; }
-		color1=$($picker_app)
-		{ echo; echo -n ${ORANGE}"Pick second color... "; }
-		color2=$($picker_app)
-		color="$color1-$color2"
-		{ echo; echo ${ORANGE}"Generating wallpaper with colors:${GREEN} $color1, $color2"; }
-	elif [[ "$BGRADIENT" == "true" ]]; then
-		{ echo; echo -n ${ORANGE}"Pick first color... "; }
-		color1=$($picker_app)
-		{ echo; echo -n ${ORANGE}"Pick second color... "; }
-		color2=$($picker_app)
-		{ echo; echo -n ${ORANGE}"Pick third color... "; }
-		color3=$($picker_app)
-		{ echo; echo -n ${ORANGE}"Pick fourth color... "; }
-		color4=$($picker_app)
-		{ echo; echo ${ORANGE}"Generating wallpaper with colors:${GREEN} $color1, $color2, $color3 & $color4"; }
-	fi
-}
-
-## Show terminal colors
-color_prompt() {
-	f=3 b=4
-	for j in f b; do
-	  for i in {0..7}; do
-		printf -v $j$i %b "\e[${!j}${i}m"
-	  done
-	done
-	d=$'\e[1m'
-	t=$'\e[0m'
-	v=$'\e[7m'
-
-	cat <<- EOF
-	 
-	 $f1██████  $d██████$t  $f2██████  $d██████$t  $f3██████  $d██████$t
-	 $f1██01██  $d██02██$t  $f2██03██  $d██04██$t  $f3██05██  $d██06██$t
-	 $f1██████  $d██████$t  $f2██████  $d██████$t  $f3██████  $d██████$t
-
-	 $f4██████  $d██████$t  $f5██████  $d██████$t  $f6██████  $d██████$t
-	 $f4██07██  $d██08██$t  $f5██09██  $d██10██$t  $f6██11██  $d██12██$t
-	 $f4██████  $d██████$t  $f5██████  $d██████$t  $f6██████  $d██████$t	 
-	EOF
-}
-
-## Fetch colors from .Xresources file
-get_xcolors() {
-	if [[ ! -f "$HOME/.Xresources" ]]; then
-		{ echo -e ${RED}"\n[!] There's no '.Xresources' file in '$HOME' directory, Exiting...\n"; exit 1; }
-	fi
-	
-	x1="$(xrdb -query | grep 'color1:'| awk '{print $NF}')"
-	x2="$(xrdb -query | grep 'color9:'| awk '{print $NF}')"
-	x3="$(xrdb -query | grep 'color2:'| awk '{print $NF}')"
-	x4="$(xrdb -query | grep 'color10:'| awk '{print $NF}')"
-	x5="$(xrdb -query | grep 'color3:'| awk '{print $NF}')"
-	x6="$(xrdb -query | grep 'color11:'| awk '{print $NF}')"
-	x7="$(xrdb -query | grep 'color4:'| awk '{print $NF}')"
-	x8="$(xrdb -query | grep 'color12:'| awk '{print $NF}')"
-	x9="$(xrdb -query | grep 'color5:'| awk '{print $NF}')"
-	x10="$(xrdb -query | grep 'color13:'| awk '{print $NF}')"
-	x11="$(xrdb -query | grep 'color6:'| awk '{print $NF}')"
-	x12="$(xrdb -query | grep 'color14:'| awk '{print $NF}')"
-	xcolors=("$x1" "$x2" "$x3" "$x4" "$x5" "$x6" "$x7" "$x8" "$x9" "$x10" "$x11" "$x12")
-
-	color_prompt
-	
-	if [[ "$SOLID" == "true" ]]; then
-		{ echo; read -p ${ORANGE}"Enter the color number (without zero): "${BLUE} cnum; }
-		color="${xcolors[(( cnum -1 ))]}"
-		{ echo; echo ${ORANGE}"Generating wallpaper with color:${GREEN} $color"; }
-	elif [[ "$GRADIENT" == "true" ]] || [[ "$RGRADIENT" == "true" ]] || [[ "$TGRADIENT" == "true" ]]; then
-		{ echo; read -p ${ORANGE}"Enter first color number (without zero): "${BLUE} cnum; }
-		color1="${xcolors[(( cnum -1 ))]}"
-		{ echo; read -p ${ORANGE}"Enter second color number (without zero): "${BLUE} cnum; }
-		color2="${xcolors[(( cnum -1 ))]}"
-		color="$color1-$color2"
-		{ echo; echo ${ORANGE}"Generating wallpaper with colors:${GREEN} $color1, $color2"; }
-	elif [[ "$BGRADIENT" == "true" ]]; then
-		{ echo; read -p ${ORANGE}"Enter first color number (without zero): "${BLUE} cnum; }
-		color1="${xcolors[(( cnum -1 ))]}"
-		{ echo; read -p ${ORANGE}"Enter second color number (without zero): "${BLUE} cnum; }
-		color2="${xcolors[(( cnum -1 ))]}"
-		{ echo; read -p ${ORANGE}"Enter third color number (without zero): "${BLUE} cnum; }
-		color3="${xcolors[(( cnum -1 ))]}"
-		{ echo; read -p ${ORANGE}"Enter fourth color number (without zero): "${BLUE} cnum; }
-		color4="${xcolors[(( cnum -1 ))]}"
-		{ echo; echo ${ORANGE}"Generating wallpaper with colors:${GREEN} $color1, $color2, $color3 & $color4"; }
-	fi
-}
-
-## Get colors
-get_color() {
-	while true; do
-		{ echo; read -p ${ORANGE}"Pick Colors or Enter Colors or fetch from .Xresources file? (p/e/x): "${BLUE}; }
-		if [[ $REPLY =~ ^[p/P/e/E/x/X]$ ]]; then
-			if [[ $REPLY == "p" ]] || [[ $REPLY == "P" ]]; then
-				color_picker
-				break
-			elif [[ $REPLY == "x" ]] || [[ $REPLY == "X" ]]; then
-				get_xcolors
-				break
-			else
-				if [[ "$SOLID" == "true" ]]; then	
-					{ echo; read -p ${ORANGE}"Enter the color name or hex (eg: teal, #EBCB8B):${GREEN} " color; }
-					break
-				elif [[ "$GRADIENT" == "true" ]] || [[ "$RGRADIENT" == "true" ]] || [[ "$TGRADIENT" == "true" ]]; then
-					{ echo; read -p ${ORANGE}"Enter the colors name or hex (format: color1-color2):${GREEN} " color; }
-					break
-				elif [[ "$BGRADIENT" == "true" ]]; then
-					echo
-					read -p ${ORANGE}"Enter first color (eg: red, #EC7875):${GREEN} " color1
-					read -p ${ORANGE}"Enter second color (eg: green, #61C766):${GREEN} " color2
-					read -p ${ORANGE}"Enter third color (eg: yellow, #FDD835):${GREEN} " color3
-					read -p ${ORANGE}"Enter fourth color (eg: blue, #42A5F5):${GREEN} " color4
-					break
-				fi
-			fi
-		else
-			{ echo ${RED}"[!] Invalid Option, Try Again."; continue; }
-		fi
-	done
-}
-
-## Generate a solid color wallpaper
-solid() {
-	if [[ "$RANDOMIZE" == "true" ]]; then
-		get_random_color
-		color="$RCOLOR"
-	else
-		get_color
-	fi
-	convert -size "$size" canvas:"$color" "$DIR/$name"
-	show_feh
-	set_bg
-}
-
-## Generate a linear gradient wallpaper
-linear_gradient() {
-	if [[ "$RANDOMIZE" == "true" ]]; then
-		get_random_color
-		color="$RCOLOR"
-		
-		get_random_number "360"
-		angle="$RNUM"
-	else
-		get_color
-		{ echo; read -p ${ORANGE}"Enter the rotation angle (default is 0): "${BLUE} angle; }
-	fi
-	convert -size "$size" -define gradient:angle="${angle:-0}" gradient:"$color" "$DIR/$name"
-	show_feh
-	set_bg
-}
-
-## Generate a radial gradient wallpaper
-radial_gradient() {
-	if [[ "$RANDOMIZE" == "true" ]]; then
-		get_random_color
-		color1="$RCOLOR"
-		get_random_color
-		color="$color1-$RCOLOR"
-		
-		get_random_number "360"
-		angle="$RNUM"
-
-		getRandomShape
-		shape="$RSHAPE"
-	else
-		get_color
-		{ echo; read -p ${ORANGE}"Shape? [ 1.diagonal | 2.ellipse | 3.maximum | 4.minimum ] (1/2/3/4): "${BLUE}; }
-		if [[ $REPLY == "1" ]]; then
-			shape='diagonal'
-		elif [[ $REPLY == "2" ]]; then
-			shape='ellipse'
-		elif [[ $REPLY == "3" ]]; then
-			shape='maximum'
-		elif [[ $REPLY == "4" ]]; then
-			shape='minimum'
-		fi		
-		{ echo; read -p ${ORANGE}"Enter the rotation angle (default is 0): "${BLUE} angle; }
-	fi
-	convert -size "$size" -define gradient:extent="${shape:-maximum}" -define gradient:angle="${angle:-0}" radial-gradient:"$color" "$DIR/$name"
-	show_feh
-	set_bg
-}
-
-## Generate a twisted gradient wallpaper
-twisted_gradient() {
-	if [[ "$RANDOMIZE" == "true" ]]; then
-		get_random_color
-		color1="$RCOLOR"
-		get_random_color
-		color="$color1-$RCOLOR"
-		
-		get_random_number "500"
-		twist="$RNUM"
-	else
-		get_color
-		{ echo; read -p ${ORANGE}"Enter the twisting amount (maximum 500): "${BLUE} twist; }
-	fi
-	convert -size "$size" gradient:"$color" -swirl "${twist:-150}" "$DIR/$name"
-	show_feh
-	set_bg
-}
-
-## Generate a 4 point gradient wallpaper
-bilinear_gradient() {
-	if [[ "$RANDOMIZE" == "true" ]]; then
-		get_random_color
-		color1="$RCOLOR"
-		get_random_color
-		color2="$RCOLOR"
-		get_random_color
-		color3="$RCOLOR"
-		get_random_color
-		color4="$RCOLOR"
-		
-		get_random_number "2"
-		if [[ "$RNUM" == "1" ]]; then
-			answer="s"
-		else
-			answer="r"
-		fi
-	else
-		get_color
-		{ echo; read -p ${ORANGE}"Smooth or Regular? (s/r): "${BLUE} answer; }
-	fi
-	if [[ $answer == "s" ]] || [[ $answer == "S" ]]; then
-		{ echo; echo -n ${CYAN}"Please wait... "; }
-		convert \( xc:"$color1" xc:"$color2" +append \) \( xc:"$color3" xc:"$color4" +append \) -append -size "$size" xc: +swap  -fx 'v.p{i/(w-1),j/(h-1)}' "$DIR/$name"
-	else
-		convert \( xc:"$color1" xc:"$color2" +append \) \( xc:"$color3" xc:"$color4" +append \) -append -filter triangle -resize "$size"\! "$DIR/$name"
-	fi
-	show_feh
-	set_bg
-}
-
-## Generate a plasma wallpaper
-plasma() {
-	if [[ "$RANDOMIZE" == "true" ]]; then
-		get_random_number "3"
-
-		if [[ "$RNUM" == "1" ]]; then
-			answer="r"
-		elif [[ "$RNUM" == "2" ]]; then
-			answer="t"
-			get_random_number "500"
-			twist="$RNUM"
-		else
-			answer="c"
-			get_random_color
-			color="$RCOLOR"
-		fi
-	else
-		{ echo; read -p ${ORANGE}"Random, Twisted or Custom colors? (r/t/c): "${BLUE} answer; }
-	fi
-	if [[ $answer == "r" ]] || [[ $answer == "R" ]]; then
-		convert -size "$size" plasma: "$DIR/$name"
-	elif [[ $answer == "t" ]] || [[ $answer == "T" ]]; then
-		if [[ "$RANDOMIZE" != "true" ]]; then
-			{ echo; read -p ${ORANGE}"Enter the twisting amount (maximum 500): "${BLUE} twist; }
-		fi
-		convert -size "$size" plasma:fractal -swirl "${twist:-150}" "$DIR/$name"
-	else
-		if [[ "$RANDOMIZE" != "true" ]]; then
-			{ echo; read -p ${ORANGE}"Enter the colors name or hex (format: color1-color2): "${GREEN} color; }
-		fi
-		convert -size "$size" plasma:"$color" "$DIR/$name"
-	fi
-	show_feh
-	set_bg
-}
-
-## Generate a random, multi-colored blurred/gradient wallpaper
-blurred_noise() {
-	if [[ "$RANDOMIZE" == "true" ]]; then
-		get_random_number "30"
-		blur="$RNUM"
-	else
-		{ echo; read -p ${ORANGE}"Enter the blur strength (maximum 30): "${BLUE} blur; }
-	fi
-	convert -size "100x56" xc: +noise Random "/tmp/noise.png"
-	convert "/tmp/noise.png" -virtual-pixel tile -blur 0x"${blur:-14}" -auto-level -resize "$size" "$DIR/$name"	
-	show_feh
-	set_bg
-}
-
-## Generate random number lower than giver parameter
-get_random_number() {
-	RNUM=$(( ($RANDOM % $1) + 1 ))
+## Interactive color selection
+get_colors() {
+    # If colors were provided via command line, use them
+    if [[ -n "$COLOR_ARG" ]]; then
+        if [[ "$SOLID" == true ]]; then
+            COLOR="$COLOR_ARG"
+        elif [[ "$GRADIENT" == true ]] || [[ "$RGRADIENT" == true ]] || [[ "$TGRADIENT" == true ]]; then
+            COLOR="$COLOR_ARG"
+        elif [[ "$BGRADIENT" == true ]]; then
+            IFS=',' read -r COLOR1 COLOR2 COLOR3 COLOR4 <<< "$COLOR_ARG"
+        fi
+        return
+    fi
+    
+    local method
+    
+    echo
+    read -rp "${COLORS[ORANGE]}Color method? [(p)ick/(e)nter]: ${COLORS[BLUE]}" method
+    echo -e "${COLORS[RESET]}"
+    
+    case "$method" in
+        p|P)
+            if [[ "$SOLID" == true ]]; then
+                echo -n "${COLORS[ORANGE]}Pick a color... ${COLORS[RESET]}"
+                COLOR=$(pick_color)
+                echo -e "${COLORS[GREEN]}Selected: $COLOR${COLORS[RESET]}"
+            elif [[ "$GRADIENT" == true ]] || [[ "$RGRADIENT" == true ]] || [[ "$TGRADIENT" == true ]]; then
+                echo -n "${COLORS[ORANGE]}Pick first color... ${COLORS[RESET]}"
+                local color1=$(pick_color)
+                echo -n "${COLORS[ORANGE]}Pick second color... ${COLORS[RESET]}"
+                local color2=$(pick_color)
+                COLOR="$color1-$color2"
+                echo -e "${COLORS[GREEN]}Selected: $color1, $color2${COLORS[RESET]}"
+            elif [[ "$BGRADIENT" == true ]]; then
+                echo -n "${COLORS[ORANGE]}Pick 4 colors...${COLORS[RESET]}"
+                COLOR1=$(pick_color)
+                COLOR2=$(pick_color)
+                COLOR3=$(pick_color)
+                COLOR4=$(pick_color)
+                echo -e "${COLORS[GREEN]}Selected 4 colors${COLORS[RESET]}"
+            fi
+            ;;
+        *)
+            if [[ "$SOLID" == true ]]; then
+                read -rp "${COLORS[ORANGE]}Enter color (name or hex): ${COLORS[GREEN]}" COLOR
+            elif [[ "$GRADIENT" == true ]] || [[ "$RGRADIENT" == true ]] || [[ "$TGRADIENT" == true ]]; then
+                read -rp "${COLORS[ORANGE]}Enter colors (color1-color2): ${COLORS[GREEN]}" COLOR
+            elif [[ "$BGRADIENT" == true ]]; then
+                read -rp "${COLORS[ORANGE]}Color 1: ${COLORS[GREEN]}" COLOR1
+                read -rp "${COLORS[ORANGE]}Color 2: ${COLORS[GREEN]}" COLOR2
+                read -rp "${COLORS[ORANGE]}Color 3: ${COLORS[GREEN]}" COLOR3
+                read -rp "${COLORS[ORANGE]}Color 4: ${COLORS[GREEN]}" COLOR4
+            fi
+            echo -e "${COLORS[RESET]}"
+            ;;
+    esac
 }
 
 ## Generate random color
-get_random_color() {
-	RCOLOR="#"
-	for i in 1 2 3 4 5 6
-	do
-		get_random_number "16"
-		case $RNUM in
-			"1") NEXTDIGIT="1";;
-			"2") NEXTDIGIT="2";;
-			"3") NEXTDIGIT="3";;
-			"4") NEXTDIGIT="4";;
-			"5") NEXTDIGIT="5";;
-			"6") NEXTDIGIT="6";;
-			"7") NEXTDIGIT="7";;
-			"8") NEXTDIGIT="8";;
-			"9") NEXTDIGIT="9";;
-			"10") NEXTDIGIT="A";;
-			"11") NEXTDIGIT="B";;
-			"12") NEXTDIGIT="C";;
-			"13") NEXTDIGIT="D";;
-			"14") NEXTDIGIT="E";;
-			"15") NEXTDIGIT="F";;
-			"16") NEXTDIGIT="0";;
-		esac
-		RCOLOR="$RCOLOR$NEXTDIGIT"
-	done
+random_color() {
+    printf '#%06X\n' $((RANDOM * RANDOM % 16777216))
 }
 
-## Generate random shape option
-getRandomShape() {
-	get_random_number "4"
-	case $RNUM in
-		"1") RSHAPE="diagonal";;
-		"2") RSHAPE="ellipse";;
-		"3") RSHAPE="maximum";;
-		"4") RSHAPE="minimum";;
-	esac
+## Generate random number in range
+random_number() {
+    echo $(( (RANDOM % $1) + 1 ))
 }
 
-## Generate random wallpaper
-randomize() {
-	get_random_number "7"
-	case $RNUM in
-		"1") solid;;
-		"2") linear_gradient;;
-		"3") radial_gradient;;
-		"4") twisted_gradient;;
-		"5") bilinear_gradient;;
-		"6") plasma;;
-		"7") blurred_noise;;
-	esac
+## Wallpaper generators
+generate_solid() {
+    if [[ "$RANDOMIZE" == true ]]; then
+        COLOR=$(random_color)
+    else
+        get_colors
+    fi
+    
+    echo -e "${COLORS[CYAN]}Generating solid wallpaper...${COLORS[RESET]}"
+    convert -size "$SIZE" canvas:"$COLOR" "$DIR/$NAME"
+    show_preview
+    prompt_set_wallpaper
 }
 
+generate_linear() {
+    local angle
+    
+    if [[ "$RANDOMIZE" == true ]]; then
+        COLOR="$(random_color)-$(random_color)"
+        angle=$(random_number 360)
+    else
+        get_colors
+        read -rp "${COLORS[ORANGE]}Rotation angle (0-360, default 0): ${COLORS[BLUE]}" angle
+        echo -e "${COLORS[RESET]}"
+    fi
+    
+    echo -e "${COLORS[CYAN]}Generating linear gradient...${COLORS[RESET]}"
+    convert -size "$SIZE" -define gradient:angle="${angle:-0}" \
+        gradient:"$COLOR" "$DIR/$NAME"
+    show_preview
+    prompt_set_wallpaper
+}
 
-## Parse the arguments
-options=$(getopt -o S:,s,l,r,t,b,p,B,h,a,R,n --long size:,solid,linear,radial,twisted,bilinear,plasma,blurred,help,autobg,randomize,no-preview -- "$@")
-eval set -- "$options"
+generate_radial() {
+    local angle shape
+    
+    if [[ "$RANDOMIZE" == true ]]; then
+        COLOR="$(random_color)-$(random_color)"
+        angle=$(random_number 360)
+        local shapes=(diagonal ellipse maximum minimum)
+        shape="${shapes[$((RANDOM % 4))]}"
+    else
+        get_colors
+        echo -e "${COLORS[ORANGE]}Shape: (1)diagonal (2)ellipse (3)maximum (4)minimum${COLORS[RESET]}"
+        read -rp "${COLORS[BLUE]}Choice [1-4]: ${COLORS[RESET]}" choice
+        case "$choice" in
+            1) shape="diagonal" ;;
+            2) shape="ellipse" ;;
+            3) shape="maximum" ;;
+            *) shape="maximum" ;;
+        esac
+        read -rp "${COLORS[ORANGE]}Rotation angle (default 0): ${COLORS[BLUE]}" angle
+        echo -e "${COLORS[RESET]}"
+    fi
+    
+    echo -e "${COLORS[CYAN]}Generating radial gradient...${COLORS[RESET]}"
+    convert -size "$SIZE" -define gradient:extent="$shape" \
+        -define gradient:angle="${angle:-0}" radial-gradient:"$COLOR" "$DIR/$NAME"
+    show_preview
+    prompt_set_wallpaper
+}
 
-while true; do
-    case "$1" in 
-        -S|--size)
-            shift;
-		    size=$1
-            ;;
-        -s|--solid)
-            SOLID="true"
-            COLOR=$1
-            ;;
-        -l|--linear)
-            GRADIENT="true"
-            ;;
-        -r|--radial)
-            RGRADIENT="true"
-            ;;
-        -t|--twisted)
-            TGRADIENT="true"
-            ;;
-        -b|--bilinear)
-            BGRADIENT="true"
-            ;;
-        -p|--plasma)
-            PLASMA="true"
-            ;;
-        -B|--blurred)
-            NOISE="true"
-            ;;
-        -a|--autobg)
-            AUTOBG="true"
-            ;;
-        -R|--randomize)
-            RANDOMIZE="true"
-            ;;
-        -n|--no-preview)
-            NOFEH="true"
-            ;;
-        -h|--help)
-		    usage
-			exit
-            ;;
-        --)
-            shift
-            break
-            ;;
+generate_twisted() {
+    local twist
+    
+    if [[ "$RANDOMIZE" == true ]]; then
+        COLOR="$(random_color)-$(random_color)"
+        twist=$(random_number 500)
+    else
+        get_colors
+        read -rp "${COLORS[ORANGE]}Twist amount (0-500, default 150): ${COLORS[BLUE]}" twist
+        echo -e "${COLORS[RESET]}"
+    fi
+    
+    echo -e "${COLORS[CYAN]}Generating twisted gradient...${COLORS[RESET]}"
+    convert -size "$SIZE" gradient:"$COLOR" -swirl "${twist:-150}" "$DIR/$NAME"
+    show_preview
+    prompt_set_wallpaper
+}
+
+generate_bilinear() {
+    local smooth
+    
+    if [[ "$RANDOMIZE" == true ]]; then
+        COLOR1=$(random_color)
+        COLOR2=$(random_color)
+        COLOR3=$(random_color)
+        COLOR4=$(random_color)
+        [[ $((RANDOM % 2)) -eq 0 ]] && smooth=true || smooth=false
+    else
+        get_colors
+        read -rp "${COLORS[ORANGE]}Smooth or regular? (s/r): ${COLORS[BLUE]}" answer
+        [[ $answer =~ ^[Ss]$ ]] && smooth=true || smooth=false
+        echo -e "${COLORS[RESET]}"
+    fi
+    
+    echo -e "${COLORS[CYAN]}Generating bilinear gradient...${COLORS[RESET]}"
+    if [[ "$smooth" == true ]]; then
+        convert \( xc:"$COLOR1" xc:"$COLOR2" +append \) \
+                \( xc:"$COLOR3" xc:"$COLOR4" +append \) -append \
+                -size "$SIZE" xc: +swap -fx 'v.p{i/(w-1),j/(h-1)}' "$DIR/$NAME"
+    else
+        convert \( xc:"$COLOR1" xc:"$COLOR2" +append \) \
+                \( xc:"$COLOR3" xc:"$COLOR4" +append \) -append \
+                -filter triangle -resize "$SIZE"\! "$DIR/$NAME"
+    fi
+    show_preview
+    prompt_set_wallpaper
+}
+
+generate_plasma() {
+    local type twist
+    
+    if [[ "$RANDOMIZE" == true ]]; then
+        type=$((RANDOM % 3))
+        [[ $type -eq 1 ]] && twist=$(random_number 500)
+        [[ $type -eq 2 ]] && COLOR="$(random_color)-$(random_color)"
+    else
+        read -rp "${COLORS[ORANGE]}Type? [(r)andom/(t)wisted/(c)ustom]: ${COLORS[BLUE]}" answer
+        echo -e "${COLORS[RESET]}"
+        case "$answer" in
+            t|T) type=1; read -rp "${COLORS[ORANGE]}Twist (0-500): ${COLORS[BLUE]}" twist; echo -e "${COLORS[RESET]}" ;;
+            c|C) type=2; 
+                 if [[ -n "$COLOR_ARG" ]]; then
+                     COLOR="$COLOR_ARG"
+                 else
+                     read -rp "${COLORS[ORANGE]}Colors (color1-color2): ${COLORS[GREEN]}" COLOR; echo -e "${COLORS[RESET]}"
+                 fi
+                 ;;
+            *) type=0 ;;
+        esac
+    fi
+    
+    echo -e "${COLORS[CYAN]}Generating plasma wallpaper...${COLORS[RESET]}"
+    case "$type" in
+        0) convert -size "$SIZE" plasma: "$DIR/$NAME" ;;
+        1) convert -size "$SIZE" plasma:fractal -swirl "${twist:-150}" "$DIR/$NAME" ;;
+        2) convert -size "$SIZE" plasma:"$COLOR" "$DIR/$NAME" ;;
     esac
-    shift
-done
+    show_preview
+    prompt_set_wallpaper
+}
 
-## Main Execution
+generate_blurred() {
+    local blur
+    
+    if [[ "$RANDOMIZE" == true ]]; then
+        blur=$(random_number 30)
+    else
+        read -rp "${COLORS[ORANGE]}Blur strength (1-30, default 14): ${COLORS[BLUE]}" blur
+        echo -e "${COLORS[RESET]}"
+    fi
+    
+    echo -e "${COLORS[CYAN]}Generating blurred wallpaper...${COLORS[RESET]}"
+    local tmp="/tmp/canvas_noise_$$.png"
+    convert -size "100x56" xc: +noise Random "$tmp"
+    convert "$tmp" -virtual-pixel tile -blur "0x${blur:-14}" \
+        -auto-level -resize "$SIZE" "$DIR/$NAME"
+    rm -f "$tmp"
+    show_preview
+    prompt_set_wallpaper
+}
 
-Prerequisite
+generate_random() {
+    local types=(generate_solid generate_linear generate_radial generate_twisted 
+                 generate_bilinear generate_plasma generate_blurred)
+    local choice=$((RANDOM % ${#types[@]}))
+    echo -e "${COLORS[MAGENTA]}Randomizing...${COLORS[RESET]}"
+    "${types[$choice]}"
+}
 
-if [[ "$SOLID" == "true" ]]; then
-	solid
-elif [[ "$GRADIENT" == "true" ]]; then
-	linear_gradient
-elif [[ "$RGRADIENT" == "true" ]]; then
-	radial_gradient
-elif [[ "$TGRADIENT" == "true" ]]; then
-	twisted_gradient
-elif [[ "$BGRADIENT" == "true" ]]; then
-	bilinear_gradient
-elif [[ "$PLASMA" == "true" ]]; then
-	plasma
-elif [[ "$NOISE" == "true" ]]; then
-	blurred_noise
-elif [[ "$RANDOMIZE" == "true" ]]; then
-	randomize
-else
-	usage
-fi
+## Parse arguments
+main() {
+    check_prerequisites
+    
+    if [[ $# -eq 0 ]]; then
+        usage
+        exit 0
+    fi
+    
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -h|--help) usage; exit 0 ;;
+            -S|--size) SIZE="$2"; shift ;;
+            -s|--solid) SOLID=true ;;
+            -l|--linear) GRADIENT=true ;;
+            -r|--radial) RGRADIENT=true ;;
+            -t|--twisted) TGRADIENT=true ;;
+            -b|--bilinear) BGRADIENT=true ;;
+            -p|--plasma) PLASMA=true ;;
+            -B|--blurred) NOISE=true ;;
+            -n|--no-preview) NOFEH=true ;;
+            -a|--autobg) AUTOBG=true; NOFEH=true ;;
+            -R|--randomize) RANDOMIZE=true ;;
+            -c|--colors) COLOR_ARG="$2"; shift ;;
+            *) echo "Unknown option: $1"; usage; exit 1 ;;
+        esac
+        shift
+    done
+    
+    # Execute based on flags
+    if [[ "$SOLID" == true ]]; then
+        generate_solid
+    elif [[ "$GRADIENT" == true ]]; then
+        generate_linear
+    elif [[ "$RGRADIENT" == true ]]; then
+        generate_radial
+    elif [[ "$TGRADIENT" == true ]]; then
+        generate_twisted
+    elif [[ "$BGRADIENT" == true ]]; then
+        generate_bilinear
+    elif [[ "$PLASMA" == true ]]; then
+        generate_plasma
+    elif [[ "$NOISE" == true ]]; then
+        generate_blurred
+    elif [[ "$RANDOMIZE" == true ]]; then
+        generate_random
+    else
+        usage
+    fi
+    
+    echo -e "${COLORS[GREEN]}✓ Saved to: $DIR/$NAME${COLORS[RESET]}"
+}
+
+main "$@"
