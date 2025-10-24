@@ -30,7 +30,7 @@ A `bash` script to generate and apply different types of **gradient** & **blured
 
 + `imagemagick`
 + `feh`
-+ `xcolor`
++ ~`xcolor`~ `gcolor3`
 + `xrandr` (only if you use it on xfce)
 
 ### Installation
