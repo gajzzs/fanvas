@@ -36,7 +36,7 @@ NOISE=false
 AUTOBG=false
 RANDOMIZE=false
 NOFEH=false
-COLOR_ARG=""
+CMD_COLORS=""  # Colors from command line
 
 ## Signal handlers
 trap 'echo -e "\n${COLORS[RED]}[!] Program interrupted.${COLORS[RESET]}"; exit 130' SIGINT
@@ -216,18 +216,25 @@ pick_color() {
 
 ## Interactive color selection
 get_colors() {
-    # If colors were provided via command line, use them
-    if [[ -n "$COLOR_ARG" ]]; then
+    # If colors provided via command line, use them
+    if [[ -n "$CMD_COLORS" ]]; then
         if [[ "$SOLID" == true ]]; then
-            COLOR="$COLOR_ARG"
+            COLOR="$CMD_COLORS"
         elif [[ "$GRADIENT" == true ]] || [[ "$RGRADIENT" == true ]] || [[ "$TGRADIENT" == true ]]; then
-            COLOR="$COLOR_ARG"
+            COLOR="$CMD_COLORS"
         elif [[ "$BGRADIENT" == true ]]; then
-            IFS=',' read -r COLOR1 COLOR2 COLOR3 COLOR4 <<< "$COLOR_ARG"
+            # Parse comma-separated colors for bilinear
+            IFS=',' read -r COLOR1 COLOR2 COLOR3 COLOR4 <<< "$CMD_COLORS"
+            if [[ -z "$COLOR4" ]]; then
+                echo -e "${COLORS[RED]}Error: Bilinear gradient requires 4 colors separated by commas${COLORS[RESET]}"
+                echo -e "${COLORS[ORANGE]}Example: -c '#FF0000,#00FF00,#0000FF,#FFFF00'${COLORS[RESET]}"
+                exit 1
+            fi
         fi
         return
     fi
     
+    # Interactive mode
     local method
     
     echo
@@ -399,19 +406,106 @@ generate_plasma() {
         type=$((RANDOM % 3))
         [[ $type -eq 1 ]] && twist=$(random_number 500)
         [[ $type -eq 2 ]] && COLOR="$(random_color)-$(random_color)"
+    elif [[ -n "$CMD_COLORS" ]]; then
+        # Check if multiple colors provided (comma or dash separated)
+        if [[ "$CMD_COLORS" == *","* ]]; then
+            # Multiple colors with commas (3 or 4 colors)
+            IFS=',' read -ra COLORS_ARRAY <<< "$CMD_COLORS"
+            local num_colors=${#COLORS_ARRAY[@]}
+            
+            if [[ $num_colors -eq 3 ]]; then
+                # 3 colors: create a blended plasma
+                echo -e "${COLORS[CYAN]}Generating 3-color plasma wallpaper...${COLORS[RESET]}"
+                local tmp1="/tmp/canvas_plasma1_$.png"
+                local tmp2="/tmp/canvas_plasma2_$.png"
+                convert -size "$SIZE" plasma:"${COLORS_ARRAY[0]}-${COLORS_ARRAY[1]}" "$tmp1"
+                convert -size "$SIZE" plasma:"${COLORS_ARRAY[1]}-${COLORS_ARRAY[2]}" "$tmp2"
+                convert "$tmp1" "$tmp2" -compose blend -define compose:args=50 -composite "$DIR/$NAME"
+                rm -f "$tmp1" "$tmp2"
+                show_preview
+                prompt_set_wallpaper
+                return
+            elif [[ $num_colors -eq 4 ]]; then
+                # 4 colors: create quad-blended plasma
+                echo -e "${COLORS[CYAN]}Generating 4-color plasma wallpaper...${COLORS[RESET]}"
+                local tmp1="/tmp/canvas_plasma1_$.png"
+                local tmp2="/tmp/canvas_plasma2_$.png"
+                local tmp3="/tmp/canvas_plasma3_$.png"
+                convert -size "$SIZE" plasma:"${COLORS_ARRAY[0]}-${COLORS_ARRAY[1]}" "$tmp1"
+                convert -size "$SIZE" plasma:"${COLORS_ARRAY[2]}-${COLORS_ARRAY[3]}" "$tmp2"
+                convert "$tmp1" "$tmp2" -compose blend -define compose:args=50 -composite "$tmp3"
+                convert -size "$SIZE" plasma:"${COLORS_ARRAY[1]}-${COLORS_ARRAY[2]}" "$tmp1"
+                convert "$tmp3" "$tmp1" -compose blend -define compose:args=30 -composite "$DIR/$NAME"
+                rm -f "$tmp1" "$tmp2" "$tmp3"
+                show_preview
+                prompt_set_wallpaper
+                return
+            else
+                echo -e "${COLORS[RED]}Error: Plasma with commas requires 3 or 4 colors${COLORS[RESET]}"
+                echo -e "${COLORS[ORANGE]}Examples:${COLORS[RESET]}"
+                echo -e "${COLORS[ORANGE]}  3 colors: -c '#FF0000,#00FF00,#0000FF'${COLORS[RESET]}"
+                echo -e "${COLORS[ORANGE]}  4 colors: -c '#FF0000,#00FF00,#0000FF,#FFFF00'${COLORS[RESET]}"
+                exit 1
+            fi
+        else
+            # Standard 2-color plasma (dash-separated)
+            COLOR="$CMD_COLORS"
+            type=2
+        fi
     else
-        read -rp "${COLORS[ORANGE]}Type? [(r)andom/(t)wisted/(c)ustom]: ${COLORS[BLUE]}" answer
+        read -rp "${COLORS[ORANGE]}Type? [(r)andom/(t)wisted/(c)ustom/(m)ulti-color]: ${COLORS[BLUE]}" answer
         echo -e "${COLORS[RESET]}"
         case "$answer" in
-            t|T) type=1; read -rp "${COLORS[ORANGE]}Twist (0-500): ${COLORS[BLUE]}" twist; echo -e "${COLORS[RESET]}" ;;
-            c|C) type=2; 
-                 if [[ -n "$COLOR_ARG" ]]; then
-                     COLOR="$COLOR_ARG"
-                 else
-                     read -rp "${COLORS[ORANGE]}Colors (color1-color2): ${COLORS[GREEN]}" COLOR; echo -e "${COLORS[RESET]}"
-                 fi
-                 ;;
-            *) type=0 ;;
+            t|T) 
+                type=1
+                read -rp "${COLORS[ORANGE]}Twist (0-500): ${COLORS[BLUE]}" twist
+                echo -e "${COLORS[RESET]}"
+                ;;
+            c|C) 
+                type=2
+                read -rp "${COLORS[ORANGE]}Colors (color1-color2): ${COLORS[GREEN]}" COLOR
+                echo -e "${COLORS[RESET]}"
+                ;;
+            m|M)
+                read -rp "${COLORS[ORANGE]}Number of colors (3 or 4): ${COLORS[BLUE]}" num
+                echo -e "${COLORS[RESET]}"
+                if [[ "$num" == "3" ]]; then
+                    read -rp "${COLORS[ORANGE]}Color 1: ${COLORS[GREEN]}" c1
+                    read -rp "${COLORS[ORANGE]}Color 2: ${COLORS[GREEN]}" c2
+                    read -rp "${COLORS[ORANGE]}Color 3: ${COLORS[GREEN]}" c3
+                    echo -e "${COLORS[RESET]}${COLORS[CYAN]}Generating 3-color plasma...${COLORS[RESET]}"
+                    local tmp1="/tmp/canvas_plasma1_$.png"
+                    local tmp2="/tmp/canvas_plasma2_$.png"
+                    convert -size "$SIZE" plasma:"$c1-$c2" "$tmp1"
+                    convert -size "$SIZE" plasma:"$c2-$c3" "$tmp2"
+                    convert "$tmp1" "$tmp2" -compose blend -define compose:args=50 -composite "$DIR/$NAME"
+                    rm -f "$tmp1" "$tmp2"
+                    show_preview
+                    prompt_set_wallpaper
+                    return
+                else
+                    read -rp "${COLORS[ORANGE]}Color 1: ${COLORS[GREEN]}" c1
+                    read -rp "${COLORS[ORANGE]}Color 2: ${COLORS[GREEN]}" c2
+                    read -rp "${COLORS[ORANGE]}Color 3: ${COLORS[GREEN]}" c3
+                    read -rp "${COLORS[ORANGE]}Color 4: ${COLORS[GREEN]}" c4
+                    echo -e "${COLORS[RESET]}${COLORS[CYAN]}Generating 4-color plasma...${COLORS[RESET]}"
+                    local tmp1="/tmp/canvas_plasma1_$.png"
+                    local tmp2="/tmp/canvas_plasma2_$.png"
+                    local tmp3="/tmp/canvas_plasma3_$.png"
+                    convert -size "$SIZE" plasma:"$c1-$c2" "$tmp1"
+                    convert -size "$SIZE" plasma:"$c3-$c4" "$tmp2"
+                    convert "$tmp1" "$tmp2" -compose blend -define compose:args=50 -composite "$tmp3"
+                    convert -size "$SIZE" plasma:"$c2-$c3" "$tmp1"
+                    convert "$tmp3" "$tmp1" -compose blend -define compose:args=30 -composite "$DIR/$NAME"
+                    rm -f "$tmp1" "$tmp2" "$tmp3"
+                    show_preview
+                    prompt_set_wallpaper
+                    return
+                fi
+                ;;
+            *) 
+                type=0
+                ;;
         esac
     fi
     
@@ -465,21 +559,26 @@ main() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
             -h|--help) usage; exit 0 ;;
-            -S|--size) SIZE="$2"; shift ;;
-            -s|--solid) SOLID=true ;;
-            -l|--linear) GRADIENT=true ;;
-            -r|--radial) RGRADIENT=true ;;
-            -t|--twisted) TGRADIENT=true ;;
-            -b|--bilinear) BGRADIENT=true ;;
-            -p|--plasma) PLASMA=true ;;
-            -B|--blurred) NOISE=true ;;
-            -n|--no-preview) NOFEH=true ;;
-            -a|--autobg) AUTOBG=true; NOFEH=true ;;
-            -R|--randomize) RANDOMIZE=true ;;
-            -c|--colors) COLOR_ARG="$2"; shift ;;
+            -S|--size) 
+                SIZE="$2"
+                shift 2
+                ;;
+            -c|--colors) 
+                CMD_COLORS="$2"
+                shift 2
+                ;;
+            -s|--solid) SOLID=true; shift ;;
+            -l|--linear) GRADIENT=true; shift ;;
+            -r|--radial) RGRADIENT=true; shift ;;
+            -t|--twisted) TGRADIENT=true; shift ;;
+            -b|--bilinear) BGRADIENT=true; shift ;;
+            -p|--plasma) PLASMA=true; shift ;;
+            -B|--blurred) NOISE=true; shift ;;
+            -n|--no-preview) NOFEH=true; shift ;;
+            -a|--autobg) AUTOBG=true; NOFEH=true; shift ;;
+            -R|--randomize) RANDOMIZE=true; shift ;;
             *) echo "Unknown option: $1"; usage; exit 1 ;;
         esac
-        shift
     done
     
     # Execute based on flags
