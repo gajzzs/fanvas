@@ -53,24 +53,36 @@ $ ./canvas -h
 ┏━╸┏━┓┏┓╻╻ ╻┏━┓┏━┓
 ┃  ┣━┫┃┗┫┃┏┛┣━┫┗━┓
 ┗━╸╹ ╹╹ ╹┗┛ ╹ ╹┗━┛
-Canvas V3.0  : The Wallpaper Generator.
-Developed By : Aditya Shakya (@adi1090x)
 
-Usage : canvas [-h] [-S wxh] [-B] [-s] [-l] [-r] [-t] [-b] [-p] [-n] [-a] [-R]
+Canvas V4.0 (Fedora Edition) - Wallpaper Generator
+
+Usage: canvas [OPTIONS]
 
 Options:
-   -h   --help		    Show this help message & exit
-   -S   --size		    Size of the wallpaper (default is 1366x768)
-   -B   --blurred	    Generate a random blurred wallpaper
-   -s   --solid		    Generate a solid color wallpaper
-   -l   --linear	    Generate a linear gradient wallpaper
-   -r   --radial	    Generate a radial gradient wallpaper
-   -t   --twisted	    Generate a twisted gradient wallpaper
-   -b   --bilinear	  Generate a bilinear(4point) gradient wallpaper
-   -p   --plasma	    Generate a plasma wallpaper
-   -n   --no-preview	Do not show preview when image is generated 
-   -a   --autobg	    Automatically set as wallpaper (implies -n)
-   -R   --randomize	  Generate a random wallpaper
+  -h, --help          Show this help message
+  -S, --size WxH      Wallpaper size (default: 1920x1080)
+  -s, --solid         Generate solid color wallpaper
+  -l, --linear        Generate linear gradient wallpaper
+  -r, --radial        Generate radial gradient wallpaper
+  -t, --twisted       Generate twisted gradient wallpaper
+  -b, --bilinear      Generate bilinear (4-point) gradient wallpaper
+  -p, --plasma        Generate plasma wallpaper
+  -B, --blurred       Generate random blurred wallpaper
+  -n, --no-preview    Skip preview window
+  -a, --autobg        Auto-set as wallpaper (implies -n)
+  -R, --randomize     Generate random wallpaper
+  -c, --colors COLORS Specify colors directly (see examples)
+
+Examples:
+  canvas -s -c "#FF5733"                    # Solid color
+  canvas -l -c "#FF5733-#3498DB" -a         # Linear gradient, auto-set
+  canvas -r -c "red-blue"                   # Radial with color names
+  canvas -t -c "#E74C3C-#8E44AD"            # Twisted gradient
+  canvas -b -c "#FF0000,#00FF00,#0000FF,#FFFF00"  # 4 colors for bilinear
+  canvas -p -c "#FF6B6B-#4ECDC4"            # Plasma with colors
+  canvas -R                                 # Random wallpaper
+  canvas -S 2560x1440 -l -c "orange-purple" # Custom size
+
 ```
 
 ### Usage
