@@ -16,6 +16,15 @@
 
 A `bash` script to generate and apply different types of **gradient** & **blured** wallpapers.
 
+
+## Changelog
++ Input Colors for wallpaper using `-c` option
++ Multi Color Support for `plasma` Wallpaper
++ Fedora Centerd Changes
+    + Replaced `xcolor` with `gcolor3`
++
+
+
 ![main](wallpapers/main.png)
 
 ### Features
