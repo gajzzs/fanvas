@@ -76,6 +76,7 @@ usage() {
 	${COLORS[RED]}┗━╸${COLORS[GREEN]}╹ ╹${COLORS[ORANGE]}╹ ╹${COLORS[BLUE]}┗┛ ${COLORS[MAGENTA]}╹ ╹${COLORS[CYAN]}┗━┛${COLORS[RESET]}
 	
 	Canvas V4.0 (Fedora Edition) - Wallpaper Generator
+	Developed By : Aditya Shakya (@adi1090x)
 	
 	Usage: canvas [OPTIONS]
 	
