@@ -24,8 +24,8 @@ A `bash` script to generate and apply different types of **gradient** & **blured
     + Replaced `xcolor` with `gcolor3`
 +
 
+<img width="2559" height="1599" alt="main2" src="https://github.com/user-attachments/assets/7f154b03-99be-4c28-9ee4-e830f577414f" />
 
-![main](wallpapers/main.png)
 
 ### Features
 
@@ -58,12 +58,12 @@ sudo cp canvas /usr/local/bin
 + Run the program and choose an option
 ```
 $ ./canvas -h
-
 ┏━╸┏━┓┏┓╻╻ ╻┏━┓┏━┓
 ┃  ┣━┫┃┗┫┃┏┛┣━┫┗━┓
 ┗━╸╹ ╹╹ ╹┗┛ ╹ ╹┗━┛
 
 Canvas V4.0 (Fedora Edition) - Wallpaper Generator
+Developed By : Aditya Shakya (@adi1090x)
 
 Usage: canvas [OPTIONS]
 
@@ -92,221 +92,12 @@ Examples:
   canvas -R                                 # Random wallpaper
   canvas -S 2560x1440 -l -c "orange-purple" # Custom size
 
+
 ```
 
 ### Usage
 
 Though you can pick colors, Here's a [list](https://imagemagick.org/www/script/color.php) of all supported color names.
-
-**1**. Generate random blured wallpaper...
-
-```
-$ canvas -B
-
-Enter the blur strength (maximum 30): 12
-
-Set as desktop background? (y/n): y
-```
-
-|Blured 1|Blured 2|
-|-|-|
-|![img](wallpapers/1.png)|![img](wallpapers/2.png)|
-
-**2**. Generate a solid color wallpaper...
-
-```
-$ canvas -s
-
-Pick Colors or Enter Colors or fetch from .Xresources file? (p/e/x): p
-
-Pick a color... 
-Generating wallpaper with color: #BA68C8
-
-Set as desktop background? (y/n): y
-
-$ canvas -s
-
-Pick Colors or Enter Colors or fetch from .Xresources file? (p/e/x): e
-
-Enter the color name or hex (eg: teal, #EBCB8B): #A3BE8C
-
-Set as desktop background? (y/n): y
-
-$ canvas -s
-
-Pick Colors or Enter Colors or fetch from .Xresources file? (p/e/x): x
- 
- ██████  ██████  ██████  ██████  ██████  ██████
- ██01██  ██02██  ██03██  ██04██  ██05██  ██06██
- ██████  ██████  ██████  ██████  ██████  ██████
-
- ██████  ██████  ██████  ██████  ██████  ██████
- ██07██  ██08██  ██09██  ██10██  ██11██  ██12██
- ██████  ██████  ██████  ██████  ██████  ██████	 
-
-Enter the color number (without zero): 1
-
-Generating wallpaper with color: #BF616A
-
-Set as desktop background? (y/n): y
-```
-|Solid - #BA68C8|Solid - #A3BE8C|
-|-|-|
-|![img](wallpapers/3.png)|![img](wallpapers/4.png)|
-
-**3**. Generate a linear gradient wallpaper...
-
-```
-$ canvas -l
-
-Pick Colors or Enter Colors or fetch from .Xresources file? (p/e/x): p
-
-Pick first color...
-Pick second color...
-
-Generating wallpaper with colors: #FB8784, #70D675
-
-Enter the rotation angle (default is 0): 60 
-
-Set as desktop background? (y/n): y
-
-$ canvas -l
-
-Pick Colors or Enter Colors or fetch from .Xresources file? (p/e/x): e
-
-Enter the colors name or hex (format: color1-color2): orange-purple
-
-Enter the rotation angle (default is 0): 90
-
-Set as desktop background? (y/n): y
-```
-
-|Linear Gradient 1|Linear Gradient 2|
-|-|-|
-|![img](wallpapers/5.png)|![img](wallpapers/6.png)|
-
-**4**. Generate a radial gradient wallpaper...
-
-```
-$ canvas -r
-
-Pick Colors or Enter Colors or fetch from .Xresources file? (p/e/x): p
-
-Pick first color...
-Pick second color...
-
-Generating wallpaper with colors: #DA0B86, #200D74
-
-Shape? [ 1.diagonal | 2.ellipse | 3.maximum | 4.minimum ] (1/2/3/4): 3
-
-Enter the rotation angle (default is 0): 0
-
-Set as desktop background? (y/n): y
-
-$ canvas -r
-
-Pick Colors or Enter Colors or fetch from .Xresources file? (p/e/x): e
-
-Enter the colors name or hex (format: color1-color2): red-black
-
-Shape? [ 1.diagonal | 2.ellipse | 3.maximum | 4.minimum ] (1/2/3/4): 2
-
-Enter the rotation angle (default is 0): 20
-
-Set as desktop background? (y/n): y
-```
-
-|Radial Gradient Max|Radial Gradient Ellipse|
-|-|-|
-|![img](wallpapers/7.png)|![img](wallpapers/8.png)|
-
-**5**. Generate a twisted gradient wallpaper...
-
-```
-$ canvas -t
-
-Pick Colors or Enter Colors or fetch from .Xresources file? (p/e/x): p
-
-Pick first color...
-Pick second color...
-
-Generating wallpaper with colors: #EC7875, #61C766
-
-Enter the twisting amount (maximum 500): 200
-
-Set as desktop background? (y/n): y
-
-$ canvas -t
-
-Pick Colors or Enter Colors or fetch from .Xresources file? (p/e/x): e
-
-Enter the colors name or hex (format: color1-color2): blue-pink
-
-Enter the twisting amount (maximum 500): 180
-
-Set as desktop background? (y/n): y
-```
-
-|Twisted Gradient 1|Twisted Gradient 2|
-|-|-|
-|![img](wallpapers/9.png)|![img](wallpapers/10.png)|
-
-**6**. Generate a bilinear gradient wallpaper...
-
-```
-$ canvas -b
-
-Pick Colors or Enter Colors or fetch from .Xresources file? (p/e/x): p
-
-Pick first color...
-Pick second color...
-Pick third color...
-Pick fourth color...
-
-Generating wallpaper with colors: #FB8784, #70D675, #FFE744 & #51B4FF
-
-Smooth or Regular? (s/r): r
-
-Set as desktop background? (y/n): y
-
-$ canvas -b
-
-Pick Colors or Enter Colors or fetch from .Xresources file? (p/e/x): e
-
-Enter first color (eg: red, #EC7875): teal
-Enter second color (eg: green, #61C766): pink
-Enter third color (eg: yellow, #FDD835): purple
-Enter fourth color (eg: blue, #42A5F5): khaki
-
-Smooth or Regular? (s/r): s
-
-Please wait...
-Set as desktop background? (y/n): y
-```
-
-|Bilinear 1|Bilinear 2|
-|-|-|
-|![img](wallpapers/11.png)|![img](wallpapers/12.png)|
-
-**7**. Generate a plasma wallpaper...
-
-```
-$ canvas -p
-
-Random, Twisted or Custom colors? (r/t/c): r
-
-Set as desktop background? (y/n): n
-
-$ canvas -p
-
-Random, Twisted or Custom colors? (r/t/c): t
-
-Set as desktop background? (y/n): n
-```
-
-|Plasma Normal|Plasma Twisted|
-|-|-|
-|![img](wallpapers/13.png)|![img](wallpapers/14.png)|
 
 ### Common Issues
 
