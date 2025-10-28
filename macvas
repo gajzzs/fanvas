@@ -1,0 +1,595 @@
+#!/usr/bin/env bash
+
+## Canvas - An ImageMagick Script To Generate Wallpapers (macOS Edition)
+## Original Author: Aditya Shakya (adi1090x)
+## Refactored for macOS
+
+set -euo pipefail
+
+## ANSI Colors
+declare -A COLORS=(
+    [RED]=$'\033[31m'
+    [GREEN]=$'\033[32m'
+    [ORANGE]=$'\033[33m'
+    [BLUE]=$'\033[34m'
+    [MAGENTA]=$'\033[35m'
+    [CYAN]=$'\033[36m'
+    [WHITE]=$'\033[37m'
+    [RESET]=$'\033[0m'
+)
+
+## Configuration
+readonly DIR="${HOME}/Pictures/Canvas"
+readonly DEFAULT_SIZE="1920x1080"
+readonly PREVIEW_SIZE="600x338"
+
+## Global variables
+SIZE="$DEFAULT_SIZE"
+NAME="Canvas_$(date +%Y-%m-%d_%H-%M-%S).png"
+SOLID=false
+GRADIENT=false
+RGRADIENT=false
+TGRADIENT=false
+BGRADIENT=false
+PLASMA=false
+NOISE=false
+AUTOBG=false
+RANDOMIZE=false
+NOPREVIEW=false
+CMD_COLORS=""  # Colors from command line
+
+## Signal handlers
+trap 'echo -e "\n${COLORS[RED]}[!] Program interrupted.${COLORS[RESET]}"; exit 130' SIGINT
+trap 'echo -e "\n${COLORS[RED]}[!] Program terminated.${COLORS[RESET]}"; exit 143' SIGTERM
+
+## Check dependencies
+check_prerequisites() {
+    local deps=(convert)
+    local missing=()
+    
+    for dep in "${deps[@]}"; do
+        if ! command -v "$dep" &>/dev/null; then
+            missing+=("$dep")
+        fi
+    done
+    
+    if [[ ${#missing[@]} -gt 0 ]]; then
+        echo -e "${COLORS[RED]}ERROR: Missing dependencies: ${missing[*]}${COLORS[RESET]}" >&2
+        echo -e "${COLORS[ORANGE]}Install ImageMagick with Homebrew:${COLORS[RESET]}" >&2
+        echo -e "${COLORS[ORANGE]}  brew install imagemagick${COLORS[RESET]}" >&2
+        exit 1
+    fi
+    
+    # Check for preview tool (optional)
+    if ! command -v qlmanage &>/dev/null && ! command -v open &>/dev/null; then
+        echo -e "${COLORS[ORANGE]}Warning: No preview tool found${COLORS[RESET]}" >&2
+    fi
+    
+    mkdir -p "$DIR"
+}
+
+## Usage information
+usage() {
+    cat <<-EOF
+	${COLORS[RED]}┏━╸${COLORS[GREEN]}┏━┓${COLORS[ORANGE]}┏┓╻${COLORS[BLUE]}╻ ╻${COLORS[MAGENTA]}┏━┓${COLORS[CYAN]}┏━┓${COLORS[RESET]}
+	${COLORS[RED]}┃  ${COLORS[GREEN]}┣━┫${COLORS[ORANGE]}┃┗┫${COLORS[BLUE]}┃┏┛${COLORS[MAGENTA]}┣━┫${COLORS[CYAN]}┗━┓${COLORS[RESET]}
+	${COLORS[RED]}┗━╸${COLORS[GREEN]}╹ ╹${COLORS[ORANGE]}╹ ╹${COLORS[BLUE]}┗┛ ${COLORS[MAGENTA]}╹ ╹${COLORS[CYAN]}┗━┛${COLORS[RESET]}
+	
+	Canvas V4.0 (macOS Edition) - Wallpaper Generator
+	Developed By : Aditya Shakya (@adi1090x)
+	
+	Usage: canvas [OPTIONS]
+	
+	Options:
+	  -h, --help          Show this help message
+	  -S, --size WxH      Wallpaper size (default: 1920x1080)
+	  -s, --solid         Generate solid color wallpaper
+	  -l, --linear        Generate linear gradient wallpaper
+	  -r, --radial        Generate radial gradient wallpaper
+	  -t, --twisted       Generate twisted gradient wallpaper
+	  -b, --bilinear      Generate bilinear (4-point) gradient wallpaper
+	  -p, --plasma        Generate plasma wallpaper
+	  -B, --blurred       Generate random blurred wallpaper
+	  -n, --no-preview    Skip preview window
+	  -a, --autobg        Auto-set as wallpaper (implies -n)
+	  -R, --randomize     Generate random wallpaper
+	  -c, --colors COLORS Specify colors directly (see examples)
+	
+	Examples:
+	  canvas -s -c "#FF5733"                    # Solid color
+	  canvas -l -c "#FF5733-#3498DB" -a         # Linear gradient, auto-set
+	  canvas -r -c "red-blue"                   # Radial with color names
+	  canvas -t -c "#E74C3C-#8E44AD"            # Twisted gradient
+	  canvas -b -c "#FF0000,#00FF00,#0000FF,#FFFF00"  # 4 colors for bilinear
+	  canvas -p -c "#FF6B6B-#4ECDC4"            # Plasma with colors
+	  canvas -R                                 # Random wallpaper
+	  canvas -S 2560x1440 -l -c "orange-purple" # Custom size
+	
+	EOF
+}
+
+## Set wallpaper on macOS
+set_wallpaper() {
+    local file="$DIR/$NAME"
+    
+    # Use osascript to set wallpaper for all desktops
+    osascript <<EOF
+tell application "System Events"
+    tell every desktop
+        set picture to POSIX file "$file"
+    end tell
+end tell
+EOF
+    
+    if [[ $? -eq 0 ]]; then
+        echo -e "${COLORS[GREEN]}✓ Wallpaper set successfully${COLORS[RESET]}"
+    else
+        echo -e "${COLORS[RED]}✗ Failed to set wallpaper${COLORS[RESET]}"
+        return 1
+    fi
+}
+
+## Show preview
+show_preview() {
+    if [[ "$NOPREVIEW" != true ]] && [[ "$AUTOBG" != true ]]; then
+        # Use Quick Look for preview on macOS
+        if command -v qlmanage &>/dev/null; then
+            qlmanage -p "$DIR/$NAME" &>/dev/null &
+        else
+            # Fallback to opening with default image viewer
+            open "$DIR/$NAME" &
+        fi
+    fi
+}
+
+## Prompt to set wallpaper
+prompt_set_wallpaper() {
+    if [[ "$AUTOBG" == true ]]; then
+        set_wallpaper
+        return
+    fi
+    
+    echo
+    read -rp "${COLORS[ORANGE]}Set as desktop background? (y/n): ${COLORS[BLUE]}" reply
+    echo -e "${COLORS[RESET]}"
+    
+    if [[ $reply =~ ^[Yy]$ ]]; then
+        set_wallpaper
+    fi
+}
+
+## Get color using macOS color picker
+pick_color() {
+    # Use osascript to call native color picker
+    local color=$(osascript 2>/dev/null <<'EOF'
+tell application "System Events"
+    try
+        set selectedColor to choose color default color {65535, 0, 0}
+        set redValue to (item 1 of selectedColor) / 257
+        set greenValue to (item 2 of selectedColor) / 257
+        set blueValue to (item 3 of selectedColor) / 257
+        set hexColor to "#"
+        repeat with colorValue in {redValue, greenValue, blueValue}
+            set hexValue to ""
+            set theValue to colorValue as integer
+            repeat
+                set digit to theValue mod 16
+                if digit < 10 then
+                    set hexValue to digit & hexValue
+                else
+                    set hexValue to (ASCII character (digit + 55)) & hexValue
+                end if
+                set theValue to theValue div 16
+                if theValue = 0 then exit repeat
+            end repeat
+            if length of hexValue = 1 then set hexValue to "0" & hexValue
+            set hexColor to hexColor & hexValue
+        end repeat
+        return hexColor
+    on error
+        return ""
+    end try
+end tell
+EOF
+)
+    
+    if [[ -n "$color" ]]; then
+        echo "$color"
+    else
+        # Fallback to random color
+        printf '#%06X\n' $((RANDOM * RANDOM % 16777216))
+    fi
+}
+
+## Interactive color selection
+get_colors() {
+    # If colors provided via command line, use them
+    if [[ -n "$CMD_COLORS" ]]; then
+        if [[ "$SOLID" == true ]]; then
+            COLOR="$CMD_COLORS"
+        elif [[ "$GRADIENT" == true ]] || [[ "$RGRADIENT" == true ]] || [[ "$TGRADIENT" == true ]]; then
+            COLOR="$CMD_COLORS"
+        elif [[ "$BGRADIENT" == true ]]; then
+            # Parse comma-separated colors for bilinear
+            IFS=',' read -r COLOR1 COLOR2 COLOR3 COLOR4 <<< "$CMD_COLORS"
+            if [[ -z "$COLOR4" ]]; then
+                echo -e "${COLORS[RED]}Error: Bilinear gradient requires 4 colors separated by commas${COLORS[RESET]}"
+                echo -e "${COLORS[ORANGE]}Example: -c '#FF0000,#00FF00,#0000FF,#FFFF00'${COLORS[RESET]}"
+                exit 1
+            fi
+        fi
+        return
+    fi
+    
+    # Interactive mode
+    local method
+    
+    echo
+    read -rp "${COLORS[ORANGE]}Color method? [(p)ick/(e)nter]: ${COLORS[BLUE]}" method
+    echo -e "${COLORS[RESET]}"
+    
+    case "$method" in
+        p|P)
+            if [[ "$SOLID" == true ]]; then
+                echo -e "${COLORS[ORANGE]}Pick a color...${COLORS[RESET]}"
+                COLOR=$(pick_color)
+                echo -e "${COLORS[GREEN]}Selected: $COLOR${COLORS[RESET]}"
+            elif [[ "$GRADIENT" == true ]] || [[ "$RGRADIENT" == true ]] || [[ "$TGRADIENT" == true ]]; then
+                echo -e "${COLORS[ORANGE]}Pick first color...${COLORS[RESET]}"
+                local color1=$(pick_color)
+                echo -e "${COLORS[ORANGE]}Pick second color...${COLORS[RESET]}"
+                local color2=$(pick_color)
+                COLOR="$color1-$color2"
+                echo -e "${COLORS[GREEN]}Selected: $color1, $color2${COLORS[RESET]}"
+            elif [[ "$BGRADIENT" == true ]]; then
+                echo -e "${COLORS[ORANGE]}Pick 4 colors...${COLORS[RESET]}"
+                COLOR1=$(pick_color)
+                COLOR2=$(pick_color)
+                COLOR3=$(pick_color)
+                COLOR4=$(pick_color)
+                echo -e "${COLORS[GREEN]}Selected 4 colors${COLORS[RESET]}"
+            fi
+            ;;
+        *)
+            if [[ "$SOLID" == true ]]; then
+                read -rp "${COLORS[ORANGE]}Enter color (name or hex): ${COLORS[GREEN]}" COLOR
+            elif [[ "$GRADIENT" == true ]] || [[ "$RGRADIENT" == true ]] || [[ "$TGRADIENT" == true ]]; then
+                read -rp "${COLORS[ORANGE]}Enter colors (color1-color2): ${COLORS[GREEN]}" COLOR
+            elif [[ "$BGRADIENT" == true ]]; then
+                read -rp "${COLORS[ORANGE]}Color 1: ${COLORS[GREEN]}" COLOR1
+                read -rp "${COLORS[ORANGE]}Color 2: ${COLORS[GREEN]}" COLOR2
+                read -rp "${COLORS[ORANGE]}Color 3: ${COLORS[GREEN]}" COLOR3
+                read -rp "${COLORS[ORANGE]}Color 4: ${COLORS[GREEN]}" COLOR4
+            fi
+            echo -e "${COLORS[RESET]}"
+            ;;
+    esac
+}
+
+## Generate random color
+random_color() {
+    printf '#%06X\n' $((RANDOM * RANDOM % 16777216))
+}
+
+## Generate random number in range
+random_number() {
+    echo $(( (RANDOM % $1) + 1 ))
+}
+
+## Wallpaper generators
+generate_solid() {
+    if [[ "$RANDOMIZE" == true ]]; then
+        COLOR=$(random_color)
+    else
+        get_colors
+    fi
+    
+    echo -e "${COLORS[CYAN]}Generating solid wallpaper...${COLORS[RESET]}"
+    convert -size "$SIZE" canvas:"$COLOR" "$DIR/$NAME"
+    show_preview
+    prompt_set_wallpaper
+}
+
+generate_linear() {
+    local angle
+    
+    if [[ "$RANDOMIZE" == true ]]; then
+        COLOR="$(random_color)-$(random_color)"
+        angle=$(random_number 360)
+    else
+        get_colors
+        read -rp "${COLORS[ORANGE]}Rotation angle (0-360, default 0): ${COLORS[BLUE]}" angle
+        echo -e "${COLORS[RESET]}"
+    fi
+    
+    echo -e "${COLORS[CYAN]}Generating linear gradient...${COLORS[RESET]}"
+    convert -size "$SIZE" -define gradient:angle="${angle:-0}" \
+        gradient:"$COLOR" "$DIR/$NAME"
+    show_preview
+    prompt_set_wallpaper
+}
+
+generate_radial() {
+    local angle shape
+    
+    if [[ "$RANDOMIZE" == true ]]; then
+        COLOR="$(random_color)-$(random_color)"
+        angle=$(random_number 360)
+        local shapes=(diagonal ellipse maximum minimum)
+        shape="${shapes[$((RANDOM % 4))]}"
+    else
+        get_colors
+        echo -e "${COLORS[ORANGE]}Shape: (1)diagonal (2)ellipse (3)maximum (4)minimum${COLORS[RESET]}"
+        read -rp "${COLORS[BLUE]}Choice [1-4]: ${COLORS[RESET]}" choice
+        case "$choice" in
+            1) shape="diagonal" ;;
+            2) shape="ellipse" ;;
+            3) shape="maximum" ;;
+            *) shape="maximum" ;;
+        esac
+        read -rp "${COLORS[ORANGE]}Rotation angle (default 0): ${COLORS[BLUE]}" angle
+        echo -e "${COLORS[RESET]}"
+    fi
+    
+    echo -e "${COLORS[CYAN]}Generating radial gradient...${COLORS[RESET]}"
+    convert -size "$SIZE" -define gradient:extent="$shape" \
+        -define gradient:angle="${angle:-0}" radial-gradient:"$COLOR" "$DIR/$NAME"
+    show_preview
+    prompt_set_wallpaper
+}
+
+generate_twisted() {
+    local twist
+    
+    if [[ "$RANDOMIZE" == true ]]; then
+        COLOR="$(random_color)-$(random_color)"
+        twist=$(random_number 500)
+    else
+        get_colors
+        read -rp "${COLORS[ORANGE]}Twist amount (0-500, default 150): ${COLORS[BLUE]}" twist
+        echo -e "${COLORS[RESET]}"
+    fi
+    
+    echo -e "${COLORS[CYAN]}Generating twisted gradient...${COLORS[RESET]}"
+    convert -size "$SIZE" gradient:"$COLOR" -swirl "${twist:-150}" "$DIR/$NAME"
+    show_preview
+    prompt_set_wallpaper
+}
+
+generate_bilinear() {
+    local smooth
+    
+    if [[ "$RANDOMIZE" == true ]]; then
+        COLOR1=$(random_color)
+        COLOR2=$(random_color)
+        COLOR3=$(random_color)
+        COLOR4=$(random_color)
+        [[ $((RANDOM % 2)) -eq 0 ]] && smooth=true || smooth=false
+    else
+        get_colors
+        read -rp "${COLORS[ORANGE]}Smooth or regular? (s/r): ${COLORS[BLUE]}" answer
+        [[ $answer =~ ^[Ss]$ ]] && smooth=true || smooth=false
+        echo -e "${COLORS[RESET]}"
+    fi
+    
+    echo -e "${COLORS[CYAN]}Generating bilinear gradient...${COLORS[RESET]}"
+    if [[ "$smooth" == true ]]; then
+        convert \( xc:"$COLOR1" xc:"$COLOR2" +append \) \
+                \( xc:"$COLOR3" xc:"$COLOR4" +append \) -append \
+                -size "$SIZE" xc: +swap -fx 'v.p{i/(w-1),j/(h-1)}' "$DIR/$NAME"
+    else
+        convert \( xc:"$COLOR1" xc:"$COLOR2" +append \) \
+                \( xc:"$COLOR3" xc:"$COLOR4" +append \) -append \
+                -filter triangle -resize "$SIZE"\! "$DIR/$NAME"
+    fi
+    show_preview
+    prompt_set_wallpaper
+}
+
+generate_plasma() {
+    local type twist
+    
+    if [[ "$RANDOMIZE" == true ]]; then
+        type=$((RANDOM % 3))
+        [[ $type -eq 1 ]] && twist=$(random_number 500)
+        [[ $type -eq 2 ]] && COLOR="$(random_color)-$(random_color)"
+    elif [[ -n "$CMD_COLORS" ]]; then
+        # Check if multiple colors provided (comma or dash separated)
+        if [[ "$CMD_COLORS" == *","* ]]; then
+            # Multiple colors with commas (3 or 4 colors)
+            IFS=',' read -ra COLORS_ARRAY <<< "$CMD_COLORS"
+            local num_colors=${#COLORS_ARRAY[@]}
+            
+            if [[ $num_colors -eq 3 ]]; then
+                # 3 colors: create a blended plasma
+                echo -e "${COLORS[CYAN]}Generating 3-color plasma wallpaper...${COLORS[RESET]}"
+                local tmp1="/tmp/canvas_plasma1_$$.png"
+                local tmp2="/tmp/canvas_plasma2_$$.png"
+                convert -size "$SIZE" plasma:"${COLORS_ARRAY[0]}-${COLORS_ARRAY[1]}" "$tmp1"
+                convert -size "$SIZE" plasma:"${COLORS_ARRAY[1]}-${COLORS_ARRAY[2]}" "$tmp2"
+                convert "$tmp1" "$tmp2" -compose blend -define compose:args=50 -composite "$DIR/$NAME"
+                rm -f "$tmp1" "$tmp2"
+                show_preview
+                prompt_set_wallpaper
+                return
+            elif [[ $num_colors -eq 4 ]]; then
+                # 4 colors: create quad-blended plasma
+                echo -e "${COLORS[CYAN]}Generating 4-color plasma wallpaper...${COLORS[RESET]}"
+                local tmp1="/tmp/canvas_plasma1_$$.png"
+                local tmp2="/tmp/canvas_plasma2_$$.png"
+                local tmp3="/tmp/canvas_plasma3_$$.png"
+                convert -size "$SIZE" plasma:"${COLORS_ARRAY[0]}-${COLORS_ARRAY[1]}" "$tmp1"
+                convert -size "$SIZE" plasma:"${COLORS_ARRAY[2]}-${COLORS_ARRAY[3]}" "$tmp2"
+                convert "$tmp1" "$tmp2" -compose blend -define compose:args=50 -composite "$tmp3"
+                convert -size "$SIZE" plasma:"${COLORS_ARRAY[1]}-${COLORS_ARRAY[2]}" "$tmp1"
+                convert "$tmp3" "$tmp1" -compose blend -define compose:args=30 -composite "$DIR/$NAME"
+                rm -f "$tmp1" "$tmp2" "$tmp3"
+                show_preview
+                prompt_set_wallpaper
+                return
+            else
+                echo -e "${COLORS[RED]}Error: Plasma with commas requires 3 or 4 colors${COLORS[RESET]}"
+                echo -e "${COLORS[ORANGE]}Examples:${COLORS[RESET]}"
+                echo -e "${COLORS[ORANGE]}  3 colors: -c '#FF0000,#00FF00,#0000FF'${COLORS[RESET]}"
+                echo -e "${COLORS[ORANGE]}  4 colors: -c '#FF0000,#00FF00,#0000FF,#FFFF00'${COLORS[RESET]}"
+                exit 1
+            fi
+        else
+            # Standard 2-color plasma (dash-separated)
+            COLOR="$CMD_COLORS"
+            type=2
+        fi
+    else
+        read -rp "${COLORS[ORANGE]}Type? [(r)andom/(t)wisted/(c)ustom/(m)ulti-color]: ${COLORS[BLUE]}" answer
+        echo -e "${COLORS[RESET]}"
+        case "$answer" in
+            t|T) 
+                type=1
+                read -rp "${COLORS[ORANGE]}Twist (0-500): ${COLORS[BLUE]}" twist
+                echo -e "${COLORS[RESET]}"
+                ;;
+            c|C) 
+                type=2
+                read -rp "${COLORS[ORANGE]}Colors (color1-color2): ${COLORS[GREEN]}" COLOR
+                echo -e "${COLORS[RESET]}"
+                ;;
+            m|M)
+                read -rp "${COLORS[ORANGE]}Number of colors (3 or 4): ${COLORS[BLUE]}" num
+                echo -e "${COLORS[RESET]}"
+                if [[ "$num" == "3" ]]; then
+                    read -rp "${COLORS[ORANGE]}Color 1: ${COLORS[GREEN]}" c1
+                    read -rp "${COLORS[ORANGE]}Color 2: ${COLORS[GREEN]}" c2
+                    read -rp "${COLORS[ORANGE]}Color 3: ${COLORS[GREEN]}" c3
+                    echo -e "${COLORS[RESET]}${COLORS[CYAN]}Generating 3-color plasma...${COLORS[RESET]}"
+                    local tmp1="/tmp/canvas_plasma1_$$.png"
+                    local tmp2="/tmp/canvas_plasma2_$$.png"
+                    convert -size "$SIZE" plasma:"$c1-$c2" "$tmp1"
+                    convert -size "$SIZE" plasma:"$c2-$c3" "$tmp2"
+                    convert "$tmp1" "$tmp2" -compose blend -define compose:args=50 -composite "$DIR/$NAME"
+                    rm -f "$tmp1" "$tmp2"
+                    show_preview
+                    prompt_set_wallpaper
+                    return
+                else
+                    read -rp "${COLORS[ORANGE]}Color 1: ${COLORS[GREEN]}" c1
+                    read -rp "${COLORS[ORANGE]}Color 2: ${COLORS[GREEN]}" c2
+                    read -rp "${COLORS[ORANGE]}Color 3: ${COLORS[GREEN]}" c3
+                    read -rp "${COLORS[ORANGE]}Color 4: ${COLORS[GREEN]}" c4
+                    echo -e "${COLORS[RESET]}${COLORS[CYAN]}Generating 4-color plasma...${COLORS[RESET]}"
+                    local tmp1="/tmp/canvas_plasma1_$$.png"
+                    local tmp2="/tmp/canvas_plasma2_$$.png"
+                    local tmp3="/tmp/canvas_plasma3_$$.png"
+                    convert -size "$SIZE" plasma:"$c1-$c2" "$tmp1"
+                    convert -size "$SIZE" plasma:"$c3-$c4" "$tmp2"
+                    convert "$tmp1" "$tmp2" -compose blend -define compose:args=50 -composite "$tmp3"
+                    convert -size "$SIZE" plasma:"$c2-$c3" "$tmp1"
+                    convert "$tmp3" "$tmp1" -compose blend -define compose:args=30 -composite "$DIR/$NAME"
+                    rm -f "$tmp1" "$tmp2" "$tmp3"
+                    show_preview
+                    prompt_set_wallpaper
+                    return
+                fi
+                ;;
+            *) 
+                type=0
+                ;;
+        esac
+    fi
+    
+    echo -e "${COLORS[CYAN]}Generating plasma wallpaper...${COLORS[RESET]}"
+    case "$type" in
+        0) convert -size "$SIZE" plasma: "$DIR/$NAME" ;;
+        1) convert -size "$SIZE" plasma:fractal -swirl "${twist:-150}" "$DIR/$NAME" ;;
+        2) convert -size "$SIZE" plasma:"$COLOR" "$DIR/$NAME" ;;
+    esac
+    show_preview
+    prompt_set_wallpaper
+}
+
+generate_blurred() {
+    local blur
+    
+    if [[ "$RANDOMIZE" == true ]]; then
+        blur=$(random_number 30)
+    else
+        read -rp "${COLORS[ORANGE]}Blur strength (1-30, default 14): ${COLORS[BLUE]}" blur
+        echo -e "${COLORS[RESET]}"
+    fi
+    
+    echo -e "${COLORS[CYAN]}Generating blurred wallpaper...${COLORS[RESET]}"
+    local tmp="/tmp/canvas_noise_$$.png"
+    convert -size "100x56" xc: +noise Random "$tmp"
+    convert "$tmp" -virtual-pixel tile -blur "0x${blur:-14}" \
+        -auto-level -resize "$SIZE" "$DIR/$NAME"
+    rm -f "$tmp"
+    show_preview
+    prompt_set_wallpaper
+}
+
+generate_random() {
+    local types=(generate_solid generate_linear generate_radial generate_twisted 
+                 generate_bilinear generate_plasma generate_blurred)
+    local choice=$((RANDOM % ${#types[@]}))
+    echo -e "${COLORS[MAGENTA]}Randomizing...${COLORS[RESET]}"
+    "${types[$choice]}"
+}
+
+## Parse arguments
+main() {
+    check_prerequisites
+    
+    if [[ $# -eq 0 ]]; then
+        usage
+        exit 0
+    fi
+    
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -h|--help) usage; exit 0 ;;
+            -S|--size) 
+                SIZE="$2"
+                shift 2
+                ;;
+            -c|--colors) 
+                CMD_COLORS="$2"
+                shift 2
+                ;;
+            -s|--solid) SOLID=true; shift ;;
+            -l|--linear) GRADIENT=true; shift ;;
+            -r|--radial) RGRADIENT=true; shift ;;
+            -t|--twisted) TGRADIENT=true; shift ;;
+            -b|--bilinear) BGRADIENT=true; shift ;;
+            -p|--plasma) PLASMA=true; shift ;;
+            -B|--blurred) NOISE=true; shift ;;
+            -n|--no-preview) NOPREVIEW=true; shift ;;
+            -a|--autobg) AUTOBG=true; NOPREVIEW=true; shift ;;
+            -R|--randomize) RANDOMIZE=true; shift ;;
+            *) echo "Unknown option: $1"; usage; exit 1 ;;
+        esac
+    done
+    
+    # Execute based on flags
+    if [[ "$SOLID" == true ]]; then
+        generate_solid
+    elif [[ "$GRADIENT" == true ]]; then
+        generate_linear
+    elif [[ "$RGRADIENT" == true ]]; then
+        generate_radial
+    elif [[ "$TGRADIENT" == true ]]; then
+        generate_twisted
+    elif [[ "$BGRADIENT" == true ]]; then
+        generate_bilinear
+    elif [[ "$PLASMA" == true ]]; then
+        generate_plasma
+    elif [[ "$NOISE" == true ]]; then
+        generate_blurred
+    elif [[ "$RANDOMIZE" == true ]]; then
+        generate_random
+    else
+        usage
+    fi
+    
+    echo -e "${COLORS[GREEN]}✓ Saved to: $DIR/$NAME${COLORS[RESET]}"
+}
+
+main "$@"
